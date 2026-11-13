@@ -1,0 +1,12 @@
+build/
+dist/
+keys/
+*.jks
+*.keystore
+*.apk
+*.idsig
+local.properties
+.idea/
+*.iml
+.DS_Store
+Thumbs.db

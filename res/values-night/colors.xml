@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="vf_error_container">#ff8c1d18</color>
+    <color name="vf_on_error_container">#fff9dedc</color>
+    <color name="vf_on_primary">#ff381e72</color>
+    <color name="vf_on_primary_container">#ffeaddff</color>
+    <color name="vf_on_secondary_container">#ffe8def8</color>
+    <color name="vf_on_surface">#ffe6e0e9</color>
+    <color name="vf_on_surface_variant">#ffcac4d0</color>
+    <color name="vf_outline">#ff938f99</color>
+    <color name="vf_outline_variant">#ff49454f</color>
+    <color name="vf_primary">#ffd0bcff</color>
+    <color name="vf_primary_container">#ff4f378b</color>
+    <color name="vf_ripple">#33d0bcff</color>
+    <color name="vf_secondary_container">#ff4a4458</color>
+    <color name="vf_surface">#ff141218</color>
+    <color name="vf_surface_container">#ff211f26</color>
+    <color name="vf_surface_container_high">#ff2b2930</color>
+    <color name="vf_surface_container_highest">#ff36343b</color>
+    <color name="vf_switch_thumb_off">#ff938f99</color>
+    <color name="vf_switch_track_off">#ff36343b</color>
+    <color name="vf_icon_background">#ff26215c</color>
+    <color name="vf_success">#ff5dcaa5</color>
+    <color name="vf_error">#fff09595</color>
+</resources>
