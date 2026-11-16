@@ -32,6 +32,29 @@
 - `AudioService$VolumeStreamState.adjustIndex` / `updateIndexFactors`
 - `AudioSystemAdapter.setStreamVolumeIndexAS`（仅调试日志）
 
+## 版本变更（3.8 → 4.0）
+
+### 3.9 · 性能与稳定性
+
+- **配置读取零查库**：配置改为不可变快照，启动时加载一次，后续由内容观察者 / 广播写入触发后台刷新；Hook 回调只读内存，不再因缓存过期而同步查询 Settings。（`VolumeFineModule`）
+- **全局属性 Hook 收敛**：`SystemProperties.getInt` 仅在启动窗口保留，AudioService 构造完成后主动卸载，避免运行期全系统属性调用都过 Hook。（`VolumeFineModule`）
+- **调试 Hook 按需安装**：`updateIndexFactors` / `setStreamVolumeIndexAS` 两个日志 Hook 仅在 debug 开启时挂载。（`VolumeFineModule`）
+- **广播鉴权加固**：配置广播改用预共享令牌校验，发送方 UID 作兼容回退，防止伪造写入。（`VolumeFineModule`、`ConfigContract`、`SettingsActivity`）
+
+### 3.9.1 · 修复
+
+- 修复未授予「修改系统设置」权限时保存配置失败的问题：模块 UID 增加 PackageManager 查询兜底，避免合法广播被误拒。
+
+### 4.0.0 · 移除滑条吸附
+
+- 移除「滑条吸附」功能及其 Hook、配置项、设置项与文档描述。设置页参数区精简为 4 项；若系统中残留 `volume_fine_snap` 键，新版不再读取，无影响。（`VolumeFineModule`、`ConfigContract`、`SettingsActivity`）
+
+### 对用户的影响
+
+- **使用方式**：档位数、步进、细调范围、开关的操作与生效规则均不变；仅去掉滑条吸附这一低频功能。
+- **流畅度 / 耗电**：音量调节与系统属性读取不再触发同步查库或常驻全局 Hook，system_server 侧开销下降。
+- **升级路径**：3.9 / 3.9.1 → 4.0.0 签名相同，可直接覆盖；3.8 → 4.0.0 签名不同，需卸载重装并在 LSPosed 重新勾选「系统」作用域，配置值不丢失。
+
 ## 安装
 
 1. 安装 APK。
@@ -61,7 +84,7 @@ bash build.sh
 
 产物：`dist/hyper-volume-fine-<version>.apk`。
 
-首次运行若 `keys/release.jks` 不存在，脚本会用 `KS_PASS` 生成一个；请妥善保管，后续升级必须使用同一密钥。
+仓库已自带 `keys/release.jks`（口令见「签名」章节），直接构建即可复现 Release 签名；仅当密钥缺失时脚本才用 `KS_PASS` 重新生成，那会产生新签名、无法覆盖已装版本。
 
 ## 目录结构
 
@@ -97,7 +120,9 @@ META-INF/xposed/             # module.prop / java_init.list / scope.list
 
 ## 签名
 
-仓库**不包含**签名密钥。Release 里的 APK 使用开发者本地密钥签名，直接重新构建会得到不同签名，无法覆盖安装；请用自己的 `keys/release.jks` 保持升级连续性。
+仓库与 Release 均包含签名密钥 `keys/release.jks`（口令 `hypervolumenice`），用于复现构建与覆盖升级。3.9 起各版本使用同一签名，可直接覆盖；3.8 及更早版本使用另一套签名，升级需卸载重装。
+
+> 该密钥为公开私钥，任何人都可用它签名同包名 APK，请勿用于本模块以外的用途。若需独占签名身份，请改用自有密钥并自行承担升级时的签名变更。
 
 ## 免责声明
 
