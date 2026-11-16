@@ -12,16 +12,15 @@
 - **自定义总档位数**：默认 60 档（可调 20–120），改完重启生效。
 - **低音量 / 高音量分开设置步进**：低音量区默认 1 档/次（最细），超过「细调范围」后按 3 档/次走。
 - **细调范围**：默认 12 档，决定从哪里开始加速。
-- **滑条吸附**：拖动系统音量条时按指定档数对齐，默认关闭。
 - **设置页「确认更改」**：所有改动先进入本地草稿，一次性提交；支持直写与广播双通道，并回读校验、失败重试与 adb 兜底。
-- **一键恢复默认**：默认值为 60 / 12 / 1 / 3 / 关闭吸附。
+- **一键恢复默认**：默认值为 60 / 12 / 1 / 3。
 
 ## 兼容性
 
 | 项 | 值 |
 |---|---|
 | 包名 | `com.hypervolumenice` |
-| 当前版本 | 3.8（versionCode 26） |
+| 当前版本 | 4.0.0（versionCode 29） |
 | minSdk / targetSdk | 29 / 37 |
 | Xposed 接口 | libxposed API 102 |
 | 作用域 | `system` |
@@ -30,7 +29,7 @@
 
 - `AudioService` 构造函数（改写 `MAX_STREAM_VOLUME`，只改数组元素，不替换 static final 引用）
 - `SystemProperties.getInt`（劫持 `ro.config.media_vol_steps`）
-- `AudioService$VolumeStreamState.adjustIndex` / `setIndex` / `updateIndexFactors`
+- `AudioService$VolumeStreamState.adjustIndex` / `updateIndexFactors`
 - `AudioSystemAdapter.setStreamVolumeIndexAS`（仅调试日志）
 
 ## 安装
@@ -89,7 +88,6 @@ META-INF/xposed/             # module.prop / java_init.list / scope.list
 | `volume_fine_threshold` | 细调范围（档） | 12 |
 | `volume_fine_fine` | 低音量步进（档/次） | 1 |
 | `volume_fine_coarse` | 高音量步进（档/次） | 3 |
-| `volume_fine_snap` | 滑条吸附（1 = 关闭） | 1 |
 
 ## 已知限制
 

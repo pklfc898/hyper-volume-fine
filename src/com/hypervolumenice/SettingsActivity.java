@@ -132,15 +132,13 @@ public class SettingsActivity extends Activity {
         }
         boolean untouched = readInt(ConfigContract.KEY_STEPS, -1) == ConfigContract.LEGACY_DEF_STEPS
                 && readInt(ConfigContract.KEY_THRESHOLD, -1) == ConfigContract.LEGACY_DEF_THRESHOLD
-                && readInt(ConfigContract.KEY_COARSE, -1) == ConfigContract.LEGACY_DEF_COARSE
-                && readInt(ConfigContract.KEY_SNAP, -1) == ConfigContract.LEGACY_DEF_SNAP;
+                && readInt(ConfigContract.KEY_COARSE, -1) == ConfigContract.LEGACY_DEF_COARSE;
         if (!untouched) {
             return;
         }
         this.mDraft.put(ConfigContract.KEY_STEPS, ConfigContract.DEF_STEPS);
         this.mDraft.put(ConfigContract.KEY_THRESHOLD, ConfigContract.DEF_THRESHOLD);
         this.mDraft.put(ConfigContract.KEY_COARSE, ConfigContract.DEF_COARSE);
-        this.mDraft.put(ConfigContract.KEY_SNAP, ConfigContract.DEF_SNAP);
         this.mPendingDefaultsVersion = true;
     }
 
@@ -361,8 +359,6 @@ public class SettingsActivity extends Activity {
                 "低音量区每按一次走几档，1 = 最细。");
         addSliderCard(column, "高音量步进", ConfigContract.KEY_COARSE, 1, 8, 1,
                 "超过细调范围后每次按键走的档数，调大音量更快。");
-        addSliderCard(column, "滑条吸附", ConfigContract.KEY_SNAP, 1, 6, 1,
-                "拖动音量滑条时按该档数对齐，1 = 关闭。");
         addInfoCard(column);
         addFooter(column);
 
@@ -648,7 +644,7 @@ public class SettingsActivity extends Activity {
         adb.setPadding(dp(12), dp(10), dp(12), dp(10));
         adb.setBackgroundResource(R.drawable.vf_chip);
         adb.setText("adb shell settings put system volume_fine_fine 2\n"
-                + "adb shell settings put system volume_fine_snap 2");
+                + "adb shell settings put system volume_fine_coarse 4");
         LinearLayout.LayoutParams adbLp = new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
         adbLp.topMargin = dp(12);
@@ -674,7 +670,7 @@ public class SettingsActivity extends Activity {
         footer.setTextSize(11f);
         footer.setTextColor(this.mColorOnSurfaceVariant);
         footer.setGravity(Gravity.CENTER);
-        footer.setText("v3.8 · API 102 · 作用域 system");
+        footer.setText("v4.0.0 · API 102 · 作用域 system");
         LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
         lp.topMargin = dp(20);
@@ -950,6 +946,7 @@ public class SettingsActivity extends Activity {
 
     private void sendConfig(Map<String, Integer> changes) {
         Intent intent = new Intent(ConfigContract.ACTION_CONFIG);
+        intent.putExtra(ConfigContract.EXTRA_AUTH, ConfigContract.AUTH_TOKEN);
         for (Map.Entry<String, Integer> entry : changes.entrySet()) {
             intent.putExtra(entry.getKey(), entry.getValue());
         }
@@ -1103,8 +1100,6 @@ public class SettingsActivity extends Activity {
             case ConfigContract.KEY_FINE:
             case ConfigContract.KEY_COARSE:
                 return value + " 档/次";
-            case ConfigContract.KEY_SNAP:
-                return value <= 1 ? "关闭" : value + " 档";
             case ConfigContract.KEY_STEPS:
                 return value + " 档";
             default:
