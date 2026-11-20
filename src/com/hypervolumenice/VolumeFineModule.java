@@ -129,6 +129,11 @@ public final class VolumeFineModule extends XposedModule {
             return null;
         }
         Map<String, String> snapshot = snapshotSettings();
+        // Settings 未就绪（空读）时不要固化默认配置：保留 mConfig=null，
+        // 让后续 Hook 回调 / 定时补偿在 provider 就绪后重试，避免整机停在默认行为。
+        if (snapshot == null) {
+            return null;
+        }
         Config c = parseConfig(snapshot);
         this.mConfig = c;
         return c;
@@ -177,16 +182,22 @@ public final class VolumeFineModule extends XposedModule {
         }
     }
 
+    /**
+     * 返回 null 表示 SettingsProvider 尚未就绪；空 Map 表示已就绪但用户从未配置。
+     * 二者必须区分：早期空读若被当作"已配置默认值"固化，整次开机都会停在默认行为。
+     */
     private Map<String, String> snapshotSettings() {
         ContentResolver resolver = resolver();
         if (resolver == null) {
-            return new HashMap<>();
+            return null;
         }
         Cursor cursor = null;
+        boolean queried = false;
         try {
             cursor = resolver.query(Settings.System.CONTENT_URI, new String[]{"name", "value"},
                     "name LIKE ?", new String[]{"volume_fine_%"}, null);
             if (cursor != null) {
+                queried = true;
                 HashMap<String, String> map = new HashMap<>();
                 while (cursor.moveToNext()) {
                     map.put(cursor.getString(0), cursor.getString(1));
@@ -196,7 +207,7 @@ public final class VolumeFineModule extends XposedModule {
                 }
             }
         } catch (Throwable t) {
-            log(5, TAG, "snapshotSettings failed, fallback: " + t);
+            log(5, TAG, "snapshotSettings query failed, fallback: " + t);
         } finally {
             if (cursor != null) {
                 try {
@@ -205,7 +216,12 @@ public final class VolumeFineModule extends XposedModule {
                 }
             }
         }
-        return readKeysOneByOne(resolver);
+        // LIKE 查询失败时降级为逐键读取；若查询根本没成功且逐条也全空，视为 Settings 未就绪。
+        Map<String, String> fallback = readKeysOneByOne(resolver);
+        if (!queried && fallback.isEmpty()) {
+            return null;
+        }
+        return fallback;
     }
 
     private Map<String, String> readKeysOneByOne(ContentResolver resolver) {
@@ -303,8 +319,39 @@ public final class VolumeFineModule extends XposedModule {
         }
         ensureConfigReceiver();
         startReceiverRetry();
+        // 兜底补偿：LKM/内核更新后启动时序会变化，SettingsProvider 可能在模块注入之后才就绪。
+        // 分时重试直到读到真实配置，避免整机停留在默认行为、需要用户手动进设置页保存才恢复。
+        scheduleConfigCatchUp();
         log(4, TAG, "hooks installed, api=" + getApiVersion()
                 + ", framework=" + getFrameworkName() + " " + getFrameworkVersion());
+    }
+
+    /**
+     * 启动后分时补偿加载配置：一旦 mConfig 成功建立即停止。
+     * 覆盖"模块注入早于 SettingsProvider 就绪"的时序，确保用户配置在开机后自动生效。
+     */
+    private void scheduleConfigCatchUp() {
+        Thread t = new Thread(() -> {
+            long[] delays = {1000L, 3000L, 7000L, 15000L};
+            for (long d : delays) {
+                if (this.mConfig != null) {
+                    return;
+                }
+                try {
+                    Thread.sleep(d);
+                } catch (InterruptedException e) {
+                    return;
+                }
+                Config loaded = loadConfigNow();
+                if (loaded != null) {
+                    log(4, TAG, "config catch-up loaded after " + d + "ms");
+                    return;
+                }
+            }
+            log(5, TAG, "config still unavailable after catch-up window");
+        }, "VolumeFineCfgCatchUp");
+        t.setDaemon(true);
+        t.start();
     }
 
     private void hookAudioServiceCtor(ClassLoader cl) throws Throwable {
@@ -553,6 +600,8 @@ public final class VolumeFineModule extends XposedModule {
             }
             this.mConfigObserver = observer;
             log(4, TAG, "config observer registered");
+            // 观察者注册成功说明 resolver 可用；立即补一次刷新，纠正启动早期可能的空读缓存。
+            requestConfigRefresh();
         } catch (Throwable t) {
             log(5, TAG, "register config observer failed: " + t);
         }

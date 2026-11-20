@@ -20,7 +20,7 @@
 | 项 | 值 |
 |---|---|
 | 包名 | `com.hypervolumenice` |
-| 当前版本 | 4.0.0（versionCode 29） |
+| 当前版本 | 4.0.1（versionCode 30） |
 | minSdk / targetSdk | 29 / 37 |
 | Xposed 接口 | libxposed API 102 |
 | 作用域 | `system` |
@@ -48,6 +48,11 @@
 ### 4.0.0 · 移除滑条吸附
 
 - 移除「滑条吸附」功能及其 Hook、配置项、设置项与文档描述。设置页参数区精简为 4 项；若系统中残留 `volume_fine_snap` 键，新版不再读取，无影响。（`VolumeFineModule`、`ConfigContract`、`SettingsActivity`）
+
+### 4.0.1 · 修复开机配置回退默认
+
+- 修复部分场景（如更新 root 方案后重启）中，模块注入早于 SettingsProvider 就绪，启动期空读被固化为默认配置，导致音量步进停留在默认值、需手动进设置页保存才恢复的问题。（`VolumeFineModule`）
+- 现在区分「Settings 未就绪」与「未配置」：前者不再固化默认值，并在观察者就绪及启动后分时补偿重载配置，开机后自动应用用户设置。
 
 ### 对用户的影响
 
