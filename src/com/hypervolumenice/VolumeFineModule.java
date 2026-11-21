@@ -56,6 +56,9 @@ public final class VolumeFineModule extends XposedModule {
     private Field fStreamType;
     private Object mMaxStreamVolume;
     private int[] mStockSteps;
+    /** 实际写入 MAX_STREAM_VOLUME 的档位值，可能与 c.steps 不同（如启动期用了默认兜底）。
+     *  回滚必须用它而非配置值，否则缩放比例错误。-1 表示尚未成功应用。 */
+    private volatile int mAppliedSteps = -1;
     private int mModuleUid = -1;
     private boolean mPatched;
     private volatile boolean mReceiverRegistered;
@@ -158,6 +161,24 @@ public final class VolumeFineModule extends XposedModule {
     }
 
     /**
+     * 配置就绪后重算档位：AudioService 构造期若因配置未就绪而跳过应用，
+     * 这里在真配置加载成功后补做，修复"档位数停留在默认值"的问题。
+     * 仅在 mStockSteps 已抓取（即构造函数已 hook）后才有意义。
+     */
+    private void reapplyStepsIfNeeded() {
+        // 以 mMaxStreamVolume 是否就绪判断构造函数是否已 hook；不能用 mStockSteps，
+        // 因为构造期配置未就绪时 applyStepCount 提前返回，mStockSteps 恰好还是 null。
+        if (this.mMaxStreamVolume == null) {
+            return;
+        }
+        try {
+            applyStepCount();
+        } catch (Throwable t) {
+            log(5, TAG, "reapply steps failed: " + t);
+        }
+    }
+
+    /**
      * 请求后台刷新配置。合并连续事件（观察者对每个 key 各回调一次），
      * 且整段查库在单线程后台执行，不占用 system_server 的 Binder / 音频线程。
      */
@@ -168,7 +189,10 @@ public final class VolumeFineModule extends XposedModule {
         try {
             this.mConfigExecutor.execute(() -> {
                 try {
-                    loadConfigNow();
+                    Config loaded = loadConfigNow();
+                    if (loaded != null) {
+                        reapplyStepsIfNeeded();
+                    }
                     log(4, TAG, "config refreshed in background");
                 } catch (Throwable t) {
                     log(5, TAG, "background config refresh failed: " + t);
@@ -344,6 +368,8 @@ public final class VolumeFineModule extends XposedModule {
                 }
                 Config loaded = loadConfigNow();
                 if (loaded != null) {
+                    // 真配置到位后补算档位：修复构造期因配置未就绪而按默认值改刻度的问题。
+                    reapplyStepsIfNeeded();
                     log(4, TAG, "config catch-up loaded after " + d + "ms");
                     return;
                 }
@@ -379,39 +405,54 @@ public final class VolumeFineModule extends XposedModule {
                 log(6, TAG, "applyStepCount failed", t);
             }
             ensureConfigReceiver();
-            // 启动期已改写 MAX_STREAM_VOLUME，属性 Hook 的兜底使命完成。
-            // 延迟卸载：给 VolumeStreamState 初始化读取 ro.config.media_vol_steps 留出窗口，
-            // 之后再 unhook，避免运行期每一次 SystemProperties.getInt 都过 Hook 框架。
+            // 先执行原生构造，让 VolumeStreamState 完成初始化并读取 ro.config.media_vol_steps，
+            // 之后才启动卸载计时。若计时从 proceed 之前开始，构造耗时超过窗口时属性 Hook
+            // 会被提前卸载，导致"数组已改、属性仍是原生值"的档位不一致。
+            Object result = chain.proceed();
             scheduleStepsHookUnhook();
-            return chain.proceed();
+            return result;
         });
     }
 
     private void applyStepCount() {
-        if (this.mPatched) {
+        // 只在拿到真实配置后才应用并置位：启动早期 config() 可能返回默认兜底，
+        // 若此时就按默认值改档位并置 mPatched，本次开机会一直停在错误档位。
+        Config c = this.mConfig;
+        if (c == null) {
             return;
         }
-        this.mPatched = true;
-        Config c = config();
         Object obj = this.mMaxStreamVolume;
         if (!(obj instanceof int[])) {
             return;
         }
         int[] limits = (int[]) obj;
-        // 抓一份原生档位，供"关闭模块"时按比例回滚，避免写死 29 档
-        this.mStockSteps = limits.clone();
+        // 抓一份原生档位，供"关闭模块"时按比例回滚，避免写死 29 档（只抓一次）
+        if (this.mStockSteps == null) {
+            this.mStockSteps = limits.clone();
+        }
         if (!c.enabled) {
-            restoreStockVolumeSettings();
+            if (!this.mPatched) {
+                this.mPatched = true;
+                restoreStockVolumeSettings();
+            }
+            return;
+        }
+        // 档位已按当前配置应用过则不重复写数组（补偿/观察者刷新可能再次触发）
+        if (this.mPatched && this.mAppliedSteps == c.steps) {
             return;
         }
         for (Integer stream : c.streams) {
             int idx = stream == null ? -1 : stream.intValue();
-            if (idx >= 0 && idx < limits.length && c.steps > 0 && limits[idx] != c.steps) {
-                log(4, TAG, "stream " + idx + " volume steps: " + limits[idx] + " -> " + c.steps);
-                // 只改数组元素，不改 static final 字段的引用（Android 17 限制）
-                limits[idx] = c.steps;
+            if (idx >= 0 && idx < limits.length && c.steps > 0) {
+                if (limits[idx] != c.steps) {
+                    log(4, TAG, "stream " + idx + " volume steps: " + limits[idx] + " -> " + c.steps);
+                    // 只改数组元素，不改 static final 字段的引用（Android 17 限制）
+                    limits[idx] = c.steps;
+                }
             }
         }
+        this.mAppliedSteps = c.steps;
+        this.mPatched = true;
     }
 
     private void hookVolumeStepsProperty(ClassLoader cl) throws Throwable {
@@ -538,7 +579,12 @@ public final class VolumeFineModule extends XposedModule {
         int device = (Integer) rawDevice;
         int current = indexes.get(device, Integer.MIN_VALUE);
         if (current == Integer.MIN_VALUE) {
-            current = indexes.get(DEVICE_OUT_DEFAULT, 0);
+            current = indexes.get(DEVICE_OUT_DEFAULT, Integer.MIN_VALUE);
+        }
+        // 当前档位未知时不要用 0 充当：会把高音量区误判成细调区、放大步进甚至打到 0 档。
+        // 索引未知就让系统原生逻辑处理，本模块不介入。
+        if (current == Integer.MIN_VALUE) {
+            return chain.proceed();
         }
         int max = this.fIndexMax.getInt(self);
         if (max <= 0) {
@@ -751,7 +797,10 @@ public final class VolumeFineModule extends XposedModule {
      */
     private void restoreStockVolumeSettings() {
         Config c = config();
-        int applied = c.steps;
+        // 用实际写入 MAX_STREAM_VOLUME 的档位作为回滚比例的分母。
+        // 若启动期因配置未就绪而按默认值应用（或从未应用），c.steps 可能与真实生效值不同，
+        // 直接用它会导致缩放比例错误。优先取 mAppliedSteps，无效时再退回配置值。
+        int applied = this.mAppliedSteps > 0 ? this.mAppliedSteps : c.steps;
         if (applied <= 0) {
             return;
         }

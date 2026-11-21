@@ -20,7 +20,7 @@
 | 项 | 值 |
 |---|---|
 | 包名 | `com.hypervolumenice` |
-| 当前版本 | 4.0.1（versionCode 30） |
+| 当前版本 | 4.0.2（versionCode 31） |
 | minSdk / targetSdk | 29 / 37 |
 | Xposed 接口 | libxposed API 102 |
 | 作用域 | `system` |
@@ -48,6 +48,13 @@
 ### 4.0.0 · 移除滑条吸附
 
 - 移除「滑条吸附」功能及其 Hook、配置项、设置项与文档描述。设置页参数区精简为 4 项；若系统中残留 `volume_fine_snap` 键，新版不再读取，无影响。（`VolumeFineModule`、`ConfigContract`、`SettingsActivity`）
+
+### 4.0.2 · 修复四处启动期与边界缺陷
+
+- **档位数重算**：`applyStepCount()` 改为拿到真实配置后才应用并置位；配置迟到时由补偿线程补算档位，修复档位数停留在默认值。（`VolumeFineModule`）
+- **属性 Hook 卸载时机**：3 秒卸载计时移到 AudioService 构造完成之后，避免构造超时导致「数组已改、属性仍是原生值」的不一致。（`VolumeFineModule`）
+- **档位未知兜底**：当前设备与默认设备的索引都查不到时不再用 0 充当当前档位，改为放行原生逻辑，避免误判细调区、步进被放大。（`VolumeFineModule`）
+- **回滚比例**：回滚改用实际写入的档位值作分母，而非配置值，修复改过 steps 后关闭模块时缩放比例错误。（`VolumeFineModule`）
 
 ### 4.0.1 · 修复开机配置回退默认
 

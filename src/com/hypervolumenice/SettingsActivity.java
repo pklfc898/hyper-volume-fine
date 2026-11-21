@@ -670,7 +670,7 @@ public class SettingsActivity extends Activity {
         footer.setTextSize(11f);
         footer.setTextColor(this.mColorOnSurfaceVariant);
         footer.setGravity(Gravity.CENTER);
-        footer.setText("v4.0.1 · API 102 · 作用域 system");
+        footer.setText("v4.0.2 · API 102 · 作用域 system");
         LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
         lp.topMargin = dp(20);
